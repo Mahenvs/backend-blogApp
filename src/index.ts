@@ -484,7 +484,6 @@ ALTER COLUMN "createdat" SET DEFAULT NOW();`;
     }
     catch (error) {
         console.log(error);
-
         errorHandler(res, error, 500)
     }
 
