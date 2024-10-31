@@ -22,6 +22,8 @@ app.use(cors({
 const port = process.env.port || 3000;
 const secret = process.env.JWT_SECRET
 
+const otpStore: Record<string, string> = {}
+
 app.get('/', (req, res) => {
     res.send('Hello, TypeScript with Express!');
 });
@@ -73,23 +75,23 @@ app.get('/posts', async (req, res) => {
 
 app.post('/sign-up', async (req, res) => {
     try {
-        const { username, email, password,fullname } = req.body;
+        const { username, email, password, fullname } = req.body;
         const saltRounds = 10
         const checkUserExists = `Select *from users where email = $1 and username = $2`
-        
-        const resultCheck = await client.query(checkUserExists, [email,username]);
+
+        const resultCheck = await client.query(checkUserExists, [email, username]);
         console.log(resultCheck.rows);
-        
+
         if (resultCheck.rows?.length != 0) {
             return res.status(409).json({ msg: "Username or email already exists" });
         }
-        
+
         const insertToUsers = `INSERT INTO users (username,email,password,fullname) values
             ($1,$2,$3,$4) RETURNING id`
-         
+
         const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-        const values = [username, email, hashedPassword,fullname]
+        const values = [username, email, hashedPassword, fullname]
         const result = await client.query(insertToUsers, values)
         res.status(201).send(result.rows)
     }
@@ -136,8 +138,8 @@ app.post('/sign-in', async (req, res) => {
             res.status(200).json({
                 token: token,
                 userId: userId,
-                username:email,
-                fullname:user.fullname,
+                username: email,
+                fullname: user.fullname,
                 msg: "Authentication Successful"
             });
         } else {
@@ -164,7 +166,7 @@ const authenticate = (req: Request, res: Response, next: NextFunction) => {
             const decoded = jwt.verify(token, secret) as JwtPayload;
             req.body.user = decoded; // Add user to request object
             next();
-        }else{
+        } else {
             next();
         }
 
@@ -180,19 +182,68 @@ app.get("/check-auth", authenticate, (req: Request, res: Response) => {
 
 });
 
+app.post('/generate-otp', (req: Request, res: Response) => {
+    const { email } = req.body;
+    // console.log(req.body);
+
+    if (!email) {
+        res.json({
+            msg: "Email is required"
+        })
+    }
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    otpStore[email] = otp;
+
+    res.json({
+        msg: "Otp generated",
+        otp: otp
+    })
+})
+app.post('/reset-password', async (req: Request, res: Response) => {
+    const { email, otp, password } = req.body
+    console.log(email, otp, password);
+    console.log(otpStore);
+    try {
+
+        if (otpStore[email] == otp) {
+            const updatePassword = `UPDATE USERS set password = $1 where email = $2`;
+            const values = [password, email]
+            const resp = await client.query(updatePassword, values)
+            console.log(resp.rows.length);
+
+            delete otpStore[email]
+
+            res.json({
+                cnt: resp?.rows?.length,
+                msg: "password updated successfully!",
+                otps: otpStore
+            })
+        }
+        else {
+            res.status(500).json({
+                msg: "Wrong OTP",
+                otps: otpStore
+            })
+        }
+    } catch (error) {
+        console.error(error);
+
+    }
+
+})
 
 app.post("/sign-out", (req: Request, res: Response) => {
     console.log("Inside logout ");
-    
+
     res.cookie('token', '', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production', // Ensure it's not used in development
         sameSite: 'lax',
         expires: new Date(0),
         path: '/',
-      });
-      console.log(res.cookie);
-      
+    });
+    console.log(res.cookie);
+
     res.json({ message: "Logged out!" });
 });
 
@@ -256,6 +307,7 @@ app.post('/create', async (req, res) => {
             username varchar(255) unique,
             email  varchar(255) unique,
             password varchar(255),
+            fullname varchar(255),
             createdat Date            
             )`;
         const resp = await client.query(createQuery)
