@@ -8,6 +8,7 @@ import jwt, { JwtPayload } from "jsonwebtoken";
 // import { secret } from "./constants";
 import cookieParser from "cookie-parser";
 import { errorHandler } from "./errorHandler";
+import { rateLimit } from "./Middleware/rateLimit";
 
 const app = express()
 
@@ -21,6 +22,7 @@ app.use(cors({
 
 const port = process.env.port || 3000;
 const secret = process.env.JWT_SECRET
+
 
 const otpStore: Record<string, string> = {}
 
@@ -182,7 +184,7 @@ app.get("/check-auth", authenticate, (req: Request, res: Response) => {
 
 });
 
-app.post('/generate-otp', (req: Request, res: Response) => {
+app.post('/generate-otp', rateLimit(5, 30 * 1000), (req: Request, res: Response) => {
     const { email } = req.body;
     // console.log(req.body);
 
@@ -191,7 +193,9 @@ app.post('/generate-otp', (req: Request, res: Response) => {
             msg: "Email is required"
         })
     }
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    // const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = Math.floor(100 + Math.random() * 100).toString();
+
     otpStore[email] = otp;
 
     res.json({
@@ -201,13 +205,15 @@ app.post('/generate-otp', (req: Request, res: Response) => {
 })
 app.post('/reset-password', async (req: Request, res: Response) => {
     const { email, otp, password } = req.body
-    console.log(email, otp, password);
-    console.log(otpStore);
+    console.log(otpStore[email], otp.toString());
+
     try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+
 
         if (otpStore[email] == otp) {
             const updatePassword = `UPDATE USERS set password = $1 where email = $2`;
-            const values = [password, email]
+            const values = [hashedPassword, email]
             const resp = await client.query(updatePassword, values)
             console.log(resp.rows.length);
 
@@ -216,13 +222,13 @@ app.post('/reset-password', async (req: Request, res: Response) => {
             res.json({
                 cnt: resp?.rows?.length,
                 msg: "password updated successfully!",
-                otps: otpStore
+                otp: password
             })
         }
         else {
-            res.status(500).json({
+            res.status(200).json({
                 msg: "Wrong OTP",
-                otps: otpStore
+                otp: "otpStore"
             })
         }
     } catch (error) {

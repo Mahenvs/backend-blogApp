@@ -3,12 +3,13 @@ const { Client } = require('pg')
 export const client = new Client({
   user: 'postgres',
   host: 'localhost',
-  database: process.env.DATABASE,
+  database: 'postgres',
   password: process.env.DATABASE_PASSWORD,
   port: 5432,
 })
+
 // exa
-client.connect(function(err:any) {
+client.connect(function (err: any) {
   if (err) throw err;
   console.log("Connected!");
 }); 
